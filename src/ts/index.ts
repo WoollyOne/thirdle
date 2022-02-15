@@ -1,18 +1,20 @@
 import * as THREE from "three";
-import { Color, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, PerspectiveCamera, PointLight, Scene, Texture, WebGLRenderer } from "three";
+import { Mesh, MeshBasicMaterial, MeshPhongMaterial, PerspectiveCamera, PointLight, Scene, Texture, WebGLRenderer } from "three";
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry';
 
 import { Config } from "./config";
-import { CubeReference } from "./cubereference";
+import { FaceReference } from "./facereference";
 import { CubeFace, getAsOffset, getAsRotation } from "./cubeface";
-import { threadId } from "worker_threads";
-import { FontLoader } from "three/examples/jsm/loaders/FontLoader";
+import { Font, FontLoader } from "three/examples/jsm/loaders/FontLoader";
+import { GameHandler } from "./game";
+import { InputHandler } from "./inputhandler";
+import { KeyboardComponent } from "./keyboard";
 
 // Handles dynamic rendering of index.html
-class IndexComponent {
+export class IndexComponent {
 
     // Three.js properties
     public scene: Scene;
@@ -22,13 +24,26 @@ class IndexComponent {
     public light: PointLight;
     public hdr: Texture;
 
-    public cubes: CubeReference[] = [];
-    public cubeMaterial: MeshPhysicalMaterial;
+    public cubes: FaceReference[][] = [];
+    public cubeMaterial: MeshPhongMaterial;
+    public textGeometries: Map<string, TextGeometry> = new Map();
+
+    public gameHandler: GameHandler;
+    public inputHandler: InputHandler;
 
     constructor() {
+        // Initialize graphics
         this.startThree();
-        this.initListeners();
         this.endLoadingSequence()
+
+        // Start game
+        this.gameHandler = new GameHandler(this);
+
+        // Render keyboard
+        new KeyboardComponent();
+
+        // Start reading inputs
+        this.inputHandler = new InputHandler(this, this.gameHandler);
     }
 
     startThree() {
@@ -51,22 +66,22 @@ class IndexComponent {
         document.body.appendChild(this.renderer.domElement);
 
         // Create objects
-        this.scene.background = this.hdr;
+        this.scene.background = THREE.Texture.DEFAULT_IMAGE;
         this.scene.add(this.light);
 
-        this.cubeMaterial = new THREE.MeshPhysicalMaterial({
+        // Create materials
+        this.cubeMaterial = new THREE.MeshPhongMaterial({
             color: 0xffffff,
-            transmission: 1,
-            opacity: 1,
-            metalness: 0,
-            roughness: 0.1,
-            ior: 1.5,
-            specularIntensity: 1,
-            specularColor: new Color(255, 255, 255),
-            envMapIntensity: 6,
+            opacity: 0.75,
+            shininess: 0.5,
+            reflectivity: 0.75,
             envMap: this.hdr,
-            transparent: true,
             side: THREE.FrontSide,
+        });
+
+        // Register font
+        new FontLoader().setPath("fonts/").load("roboto.json", (font) => {
+            this.createTextGeometries(font);
         });
 
         this.createCubes();
@@ -79,7 +94,7 @@ class IndexComponent {
     getHdr(): Texture {
         const hdr = new RGBELoader()
             .setPath('hdr/')
-            .load('Milkyway_Light.hdr', function () {
+            .load('main.hdr', function () {
 
                 hdr.mapping = THREE.EquirectangularReflectionMapping;
 
@@ -93,7 +108,7 @@ class IndexComponent {
     createControls(): OrbitControls {
         const controls = new OrbitControls(this.camera, this.renderer.domElement);
         const yPos = this.getWidth("y");
-        this.camera.position.set(0, yPos, 0);
+        this.camera.position.set(0, yPos, 4);
 
         const zDepth = this.getWidth("z");
         controls.target = new THREE.Vector3(0, yPos, -zDepth);
@@ -120,6 +135,22 @@ class IndexComponent {
         }
     }
 
+    createTextGeometries(font: Font) {
+        for (const char of "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("")) {
+            this.textGeometries.set(char, new TextGeometry(char, {
+                font,
+                size: 0.4,
+                height: 0.05,
+                curveSegments: 12,
+
+                bevelThickness: 0.01,
+                bevelSize: 0.01,
+                bevelSegments: 5,
+                bevelEnabled: true
+            }));
+        }
+    }
+
     createCubes() {
         const { numLetters, numTries, dimensions, offset, roundness, roundSegments } = { numLetters: Config.NUM_LETTERS, numTries: Config.NUM_TRIES, dimensions: Config.CUBE_SIZE, offset: Config.CUBE_OFFSET, roundness: Config.CUBE_ROUNDNESS, roundSegments: Config.CUBE_ROUND_SEGMENTS }
         const geometry = new RoundedBoxGeometry(dimensions, dimensions, dimensions, roundSegments, roundness);
@@ -127,8 +158,10 @@ class IndexComponent {
         const calculatedHeight = this.getWidth("y");
 
         // Render each of the cubes
-        for (let zIndex = 0; zIndex < numLetters; zIndex++) {
-            for (let tryIndex = 0; tryIndex < numTries; tryIndex++) {
+        // Render in order of try so we can store each cube reference by corresponding try
+        for (let tryIndex = 0; tryIndex < numTries; tryIndex++) {
+            let tryCubeArray: [Mesh, number, number][] = []; // Stored cube mesh, letter index, z index
+            for (let zIndex = 0; zIndex < numLetters; zIndex++) {
                 for (let letterIndex = 0; letterIndex < numLetters; letterIndex++) {
                     // Render a hollow cube made up of each cube only
                     // If we're on the front or back faces, we're fine
@@ -146,118 +179,194 @@ class IndexComponent {
                     cube.position.setZ((-zIndex * (dimensions + offset)) - 5);
                     this.scene.add(cube);
 
-                    this.storeCubeInCubeArray(cube, letterIndex, tryIndex, zIndex);
+                    tryCubeArray.push([cube, letterIndex, zIndex]);
                 }
             }
+            let tryFaceReferenceArray: FaceReference[] = [];
+            for (const cube of tryCubeArray) {
+                this.storeCubeInCubeArray(tryFaceReferenceArray, cube[0], cube[1], tryIndex, cube[2]);
+            }
+            this.cubes.push(tryFaceReferenceArray);
+        }
+    }
+
+    renderTextForCubes(text: string | undefined, currentTry: number, letterIndex: number) {
+        if (text != null && !this.textGeometries.has(text)) {
+            throw new Error("No text geometry found for " + text);
         }
 
-        this.testCubeGeometry();
+        const textFloatDistance = Config.TEXT_FLOAT_DISTANCE;
+        const simpleMaterial = new MeshBasicMaterial({ color: 0x111111 });
+        const currentArray = this.cubes[currentTry];
+
+        for (const faceReference of currentArray) {
+            if (faceReference.letter !== letterIndex) {
+                continue;
+            }
+
+            // Unrender a text character
+            if (!text) {
+                if (!faceReference.renderedLetter) {
+                    throw new Error(`Attempted to unrender nonexistant letter (currentTry: ${currentTry}, letterIndex: ${letterIndex})`);
+                }
+
+                this.scene.remove(faceReference.renderedLetter);
+                faceReference.renderedLetter = undefined;
+                continue;
+            }
+
+            if (faceReference.renderedLetter != null) {
+                throw new Error(`FaceReference already has a letter assigned to it (currentTry: ${currentTry}, letterIndex: ${letterIndex})`);
+            }
+
+            const textGeometry = this.textGeometries.get(text);
+
+            textGeometry.computeBoundingBox();
+            const width = textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x;
+            const height = textGeometry.boundingBox.max.y - textGeometry.boundingBox.min.y;
+            const depth = textGeometry.boundingBox.max.z - textGeometry.boundingBox.min.z;
+
+            const textMesh = new THREE.Mesh(textGeometry, simpleMaterial);
+
+            const offset = getAsOffset(faceReference.face);
+            textMesh.position.x = (faceReference.cube.position.x + (offset.x * textFloatDistance));
+            textMesh.position.y = (faceReference.cube.position.y + (offset.y * textFloatDistance));
+            textMesh.position.z = (faceReference.cube.position.z + (offset.z * textFloatDistance));
+            textMesh.rotation.y = getAsRotation(faceReference.face);
+
+            switch (faceReference.face) {
+                case CubeFace.South:
+                    textMesh.position.x -= width / 2;
+                    textMesh.position.y -= height / 2;
+                    textMesh.position.z -= depth / 2;
+                    break;
+                case CubeFace.East:
+                    textMesh.position.z += width / 2;
+                    textMesh.position.y -= height / 2;
+                    textMesh.position.x -= depth / 2;
+                    break;
+                case CubeFace.North:
+                    textMesh.position.x += width / 2;
+                    textMesh.position.y -= height / 2;
+                    textMesh.position.z += depth / 2;
+                    break;
+                case CubeFace.West:
+                    textMesh.position.z -= width / 2;
+                    textMesh.position.y -= height / 2;
+                    textMesh.position.x += depth / 2;
+                    break;
+            }
+            this.scene.add(textMesh);
+            faceReference.renderedLetter = textMesh;
+        }
     }
 
     testCubeGeometry() {
-        const text: string[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
         const textFloatDistance = Config.TEXT_FLOAT_DISTANCE;
 
         new FontLoader().setPath("fonts/").load("roboto.json", (font) => {
             const simpleMaterial = new MeshBasicMaterial({ color: 0x111111 });
 
-            for (const cubeReference of this.cubes) {
-                const textGeometry = new TextGeometry(text[cubeReference.letter], {
+            for (const tryFaceReferences of this.cubes) {
+                for (const faceReference of tryFaceReferences) {
+                    const textGeometry = new TextGeometry(faceReference.try.toString() + faceReference.letter.toString(), {
 
-                    font,
-                    size: 0.4,
-                    height: 0.05,
-                    curveSegments: 12,
+                        font,
+                        size: 0.4,
+                        height: 0.05,
+                        curveSegments: 12,
 
-                    bevelThickness: 0.01,
-                    bevelSize: 0.01,
-                    bevelSegments: 5,
-                    bevelEnabled: true
-                });
-                textGeometry.computeBoundingBox();
-                const width = textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x;
-                const height = textGeometry.boundingBox.max.y - textGeometry.boundingBox.min.y;
-                const depth = textGeometry.boundingBox.max.z - textGeometry.boundingBox.min.z;
+                        bevelThickness: 0.01,
+                        bevelSize: 0.01,
+                        bevelSegments: 5,
+                        bevelEnabled: true
+                    });
 
-                const textMesh = new THREE.Mesh(textGeometry, simpleMaterial);
+                    textGeometry.computeBoundingBox();
+                    const width = textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x;
+                    const height = textGeometry.boundingBox.max.y - textGeometry.boundingBox.min.y;
+                    const depth = textGeometry.boundingBox.max.z - textGeometry.boundingBox.min.z;
 
-                const offset = getAsOffset(cubeReference.face);
-                textMesh.position.x = (cubeReference.cube.position.x + (offset.x * textFloatDistance));
-                textMesh.position.y = (cubeReference.cube.position.y + (offset.y * textFloatDistance));
-                textMesh.position.z = (cubeReference.cube.position.z + (offset.z * textFloatDistance));
-                textMesh.rotation.y = getAsRotation(cubeReference.face);
+                    const textMesh = new THREE.Mesh(textGeometry, simpleMaterial);
 
-                switch (cubeReference.face) {
-                    case CubeFace.South:
-                        textMesh.position.x -= width / 2;
-                        textMesh.position.y -= height / 2;
-                        textMesh.position.z -= depth / 2;
-                        break;
-                    case CubeFace.East:
-                        textMesh.position.z += width / 2;
-                        textMesh.position.y -= height / 2;
-                        textMesh.position.x -= depth / 2;
-                        break;
-                    case CubeFace.North:
-                        textMesh.position.x += width / 2;
-                        textMesh.position.y -= height / 2;
-                        textMesh.position.z += depth / 2;
-                        break;
-                    case CubeFace.West:
-                        textMesh.position.z -= width / 2;
-                        textMesh.position.y -= height / 2;
-                        textMesh.position.x += depth / 2;
-                        break;
+                    const offset = getAsOffset(faceReference.face);
+                    textMesh.position.x = (faceReference.cube.position.x + (offset.x * textFloatDistance));
+                    textMesh.position.y = (faceReference.cube.position.y + (offset.y * textFloatDistance));
+                    textMesh.position.z = (faceReference.cube.position.z + (offset.z * textFloatDistance));
+                    textMesh.rotation.y = getAsRotation(faceReference.face);
+
+                    switch (faceReference.face) {
+                        case CubeFace.South:
+                            textMesh.position.x -= width / 2;
+                            textMesh.position.y -= height / 2;
+                            textMesh.position.z -= depth / 2;
+                            break;
+                        case CubeFace.East:
+                            textMesh.position.z += width / 2;
+                            textMesh.position.y -= height / 2;
+                            textMesh.position.x -= depth / 2;
+                            break;
+                        case CubeFace.North:
+                            textMesh.position.x += width / 2;
+                            textMesh.position.y -= height / 2;
+                            textMesh.position.z += depth / 2;
+                            break;
+                        case CubeFace.West:
+                            textMesh.position.z -= width / 2;
+                            textMesh.position.y -= height / 2;
+                            textMesh.position.x += depth / 2;
+                            break;
+                    }
+                    this.scene.add(textMesh);
                 }
-                this.scene.add(textMesh);
             }
         });
     }
 
-    storeCubeInCubeArray(cube: Mesh, letterIndex: number, tryIndex: number, zIndex: number) {
+    storeCubeInCubeArray(cubeArray: FaceReference[], cube: Mesh, letterIndex: number, tryIndex: number, zIndex: number) {
         const numLetters = Config.NUM_LETTERS;
         // Store the cube data in the cube array. Letter starting postion wraps counter-clockwise. 
         // Try index will ALWAYS correspond to the correct try.
 
         // SW edge
         if (letterIndex === 0 && zIndex === 0) {
-            this.cubes.push({ cube, face: CubeFace.South, letter: 0, try: tryIndex });
-            this.cubes.push({ cube, face: CubeFace.West, letter: numLetters - 1, try: tryIndex });
+            cubeArray.push({ cube, face: CubeFace.South, letter: 0, try: tryIndex });
+            cubeArray.push({ cube, face: CubeFace.West, letter: numLetters - 1, try: tryIndex });
         }
         // SE edge
         else if (letterIndex === numLetters - 1 && zIndex === 0) {
-            this.cubes.push({ cube, face: CubeFace.South, letter: numLetters - 1, try: tryIndex });
-            this.cubes.push({ cube, face: CubeFace.East, letter: 0, try: tryIndex });
+            cubeArray.push({ cube, face: CubeFace.South, letter: numLetters - 1, try: tryIndex });
+            cubeArray.push({ cube, face: CubeFace.East, letter: 0, try: tryIndex });
         }
         // NW edge
         else if (letterIndex === 0 && zIndex === numLetters - 1) {
-            this.cubes.push({ cube, face: CubeFace.North, letter: numLetters - 1, try: tryIndex });
-            this.cubes.push({ cube, face: CubeFace.West, letter: 0, try: tryIndex });
+            cubeArray.push({ cube, face: CubeFace.North, letter: numLetters - 1, try: tryIndex });
+            cubeArray.push({ cube, face: CubeFace.West, letter: 0, try: tryIndex });
         }
         // NE edge
         else if (letterIndex === numLetters - 1 && zIndex === numLetters - 1) {
-            this.cubes.push({ cube, face: CubeFace.North, letter: 0, try: tryIndex });
-            this.cubes.push({ cube, face: CubeFace.East, letter: numLetters - 1, try: tryIndex });
+            cubeArray.push({ cube, face: CubeFace.North, letter: 0, try: tryIndex });
+            cubeArray.push({ cube, face: CubeFace.East, letter: numLetters - 1, try: tryIndex });
         }
         // Somewhere in the center
         else {
             // S face
             if (zIndex === 0) {
-                this.cubes.push({ cube, face: CubeFace.South, letter: letterIndex, try: tryIndex });
+                cubeArray.push({ cube, face: CubeFace.South, letter: letterIndex, try: tryIndex });
             }
             // N face
             if (zIndex === numLetters - 1) {
-                this.cubes.push({ cube, face: CubeFace.North, letter: numLetters - letterIndex - 1, try: tryIndex });
+                cubeArray.push({ cube, face: CubeFace.North, letter: numLetters - letterIndex - 1, try: tryIndex });
             }
             // Between the two faces, not an edge
             else {
                 // W face
                 if (letterIndex === 0) {
-                    this.cubes.push({ cube, face: CubeFace.West, letter: numLetters - zIndex - 1, try: tryIndex });
+                    cubeArray.push({ cube, face: CubeFace.West, letter: numLetters - zIndex - 1, try: tryIndex });
                 }
                 // E face
                 if (letterIndex === numLetters - 1) {
-                    this.cubes.push({ cube, face: CubeFace.East, letter: zIndex, try: tryIndex });
+                    cubeArray.push({ cube, face: CubeFace.East, letter: zIndex, try: tryIndex });
                 }
             }
         }
@@ -271,6 +380,7 @@ class IndexComponent {
     }
 
     initListeners() {
+
     }
 
     endLoadingSequence() {
@@ -278,4 +388,4 @@ class IndexComponent {
     }
 }
 
-export const indexComponent = new IndexComponent();
+new IndexComponent();

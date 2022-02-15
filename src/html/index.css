@@ -1,297 +1,49 @@
 :root {
-  --dark-0: #003d4d;
-  --dark-1: #00303c;
-  --dark-2: #001c24;
-  --light-0: #efefef;
-  --light-1: #d3d3d3;
-  --light-2: #aeaeae;
-  --grey-0: #004b60;
-  --grey-1: #006480;
-  --grey-2: #00789a;
-
-  --match-color: #00c839;
-  --close-color: #c8c100;
-  --wrong-color: var(--dark-1);
-  --wrong-color-flash: var(--light-2);
+  --keyboard-key: #222222;
+  --keyboard-text: #eeeeee;
 }
 
-html,
 body {
-  background-color: var(--dark-2);
-  height: 100%;
-  max-width: 100%;
-  display: flex;
-  flex-direction: column;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  overflow-x: hidden;
+  margin: 0;
 }
 
-.centered-title {
-  font-size: 48pt;
-  width: 100%;
-  text-align: center;
-  color: var(--light-0);
-}
-
-#letter-tile-containers-wrapper {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  flex-grow: 1;
-}
-
-.letter-tile-container {
-  display: flex;
-}
-
-.letter-tile {
-  background-color: var(--dark-1);
-  border-radius: 3px;
-  height: 116px;
-  width: 116px;
-  max-width: 100%;
-  margin: 4px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.letter-tile-text {
-  color: var(--light-0);
-  font-weight: bold;
-  font-size: 32pt;
-  cursor: default;
-}
-
-#keyboard-containers-wrapper {
-  display: flex;
-  justify-content: center;
-}
-
-#keyboard-containers {
-  flex-grow: 1;
-}
-
-.keyboard-container {
-  display: flex;
-  justify-content: center;
-  -ms-touch-action: manipulation;
-  touch-action: manipulation;
-}
-.keyboard-tile {
-  background-color: var(--grey-0);
-  border-radius: 4px;
-  height: 96px;
-  max-width: 84px;
-  margin: 2px;
-  flex-grow: 1;
-
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  transition: all 0.2s;
-}
-
-.keyboard-tile .special {
-  flex-grow: 1;
-}
-
-.keyboard-tile:hover {
-  transition: all 0.2s;
-  transform: scale(0.9);
-  cursor: pointer;
-}
-
-.keyboard-tile:active {
-  transition: all 0.2s;
-  background-color: var(--grey-2);
-}
-
-.keyboard-tile-text {
-  color: var(--light-0);
-  font-weight: bold;
-  font-size: 24pt;
-  text-overflow: ellipsis;
-  overflow: hidden;
-}
-
-.keyboard-tile-text:hover {
-  cursor: pointer;
-}
-
-.is-big {
-  max-width: 128px;
-}
-
-.tile-match {
-  transition: all 0.2s ease;
-  background-color: var(--match-color);
-}
-
-.tile-close {
-  transition: all 0.2s ease;
-  background-color: var(--close-color);
-}
-
-.tile-wrong {
-  transition: all 0.2s ease;
-  background-color: var(--wrong-color);
-}
-
-.with-animation {
-  animation: rotatein 0.2s;
-}
-
-.with-animation-wrong {
-  animation: rotatein-wrong 0.2s;
-}
-
-@keyframes rotatein {
-  0% {
-    transform: rotate(0deg);
-  }
-  25% {
-    transform: rotate(-45deg);
-  }
-  100% {
-    transform: rotate(0deg);
-  }
-}
-
-@keyframes rotatein-wrong {
-  0% {
-    transform: rotate(0deg);
-    background-color: --wrong-color;
-  }
-  25% {
-    transform: rotate(-45deg);
-    background-color: --wrong-color-flash;
-  }
-  100% {
-    transform: rotate(0deg);
-    background-color: --wrong-color;
-  }
-}
-
-#play-again-title {
-  transition: 0.5s all ease;
-  flex-grow: 1;
-  display: unset;
-  transform: scale(1);
-}
-
-#play-again-title.none {
-  transform: scale(0);
-  transition: 0.5s all ease;
-  height: 0;
-}
-
-#play-again-title:hover:not(.none) {
-  transition: 0.5s all ease;
-  transform: scale(1.25) rotate(-3deg);
-}
-
-#play-again-title:active:not(.none) {
-  transition: 0.5s all ease;
-  transform: scale(1.35) rotate(-5deg);
-  color: var(--grey-2);
-}
-
-@media (max-width: 476px), (max-height: 720px) {
-  .centered-title {
-    font-size: 32pt;
-    margin: 4px 0 0 0;
-  }
-}
-
-#modal-wrapper {
-  background-color: var(--dark-0);
-  position: absolute;
-  z-index: 1;
-  width: 100%;
-  height: 100%;
-  left: 0;
-  top: 0;
-  opacity: 0.7;
-  overflow: auto;
-  transition: all 0.5s;
-}
-
-#modal-wrapper.hide {
-  opacity: 0;
-  transition: all 0.5s;
-  pointer-events: none;
-}
-
-#modal {
+#keyboard-wrapper {
   position: absolute;
   width: 100%;
-  height: 100%;
-  z-index: 1;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  overflow: auto;
-  left: 0;
-  top: 0;
   z-index: 2;
-}
+  background: transparent;
 
-#modal-box {
-  position: relative;
-  width: 700px;
-  max-width: 100%;
-  transition: all 0.5s;
-  color: var(--light-0);
-  margin: auto;
-  box-shadow: 5px 5px 4px 6px var(--dark-1);
-  transform: rotate3d(0, 0, 0, 0deg);
-}
-
-#modal.hide {
-  pointer-events: none;
-}
-
-#modal.hide > #modal-box {
-  transform: rotate3d(1, 0, 0, 90deg);
-  transition: all 0.5s;
-}
-
-#modal-content {
-  opacity: 1;
-  font-size: 24pt;
+  font-family: Roboto, 'Open Sans', 'Helvetica Neue', sans-serif;
+  font-size: 18pt;
   font-weight: bold;
-  padding: 24px;
-  height: 250px;
+
+  color: var(--keyboard-text);
+  bottom: 0;
+
+  display: flex;
+  justify-content: center;
 }
 
-#modal-button {
-  position: absolute;
-  left: calc(100% - 21px);
-  top: -42px;
-  font-size: 64px;
-  font-weight: bold;
+#keyboard .keyboard-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  max-width: 1280px;
 }
 
-#modal-button::before {
-  content: '×';
+#keyboard .keyboard-key {
+  width: 76px;
+  height: 118px;
+  border-radius: 4px;
+  margin: 2px;
+
+  background-color: var(--keyboard-key);
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
-.modal-win {
-  background-color: var(--match-color);
-}
-
-.modal-lose {
-  background-color: var(--dark-2);
-}
-
-.modal-error {
-  background-color: var(--close-color);
-}
-
-.modal-title {
-  font-size: 48pt;
-  margin-block-start: 12px;
-  margin-block-end: 12px;
+#keyboard .keyboard-key.large {
+  width: 118px;
 }

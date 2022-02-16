@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Mesh, MeshBasicMaterial, MeshPhongMaterial, PerspectiveCamera, PointLight, Scene, Texture, WebGLRenderer } from "three";
+import { BoxGeometry, Mesh, MeshBasicMaterial, MeshPhongMaterial, PerspectiveCamera, PointLight, Scene, Texture, WebGLRenderer } from "three";
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry';
@@ -31,7 +31,14 @@ export class IndexComponent {
     public gameHandler: GameHandler;
     public inputHandler: InputHandler;
 
+    public calculatedProperties: { xWidth: number, yWidth: number; zWidth: number } = { xWidth: undefined, yWidth: undefined, zWidth: undefined }
+
     constructor() {
+        // Initialize properties
+        this.calculatedProperties.xWidth = this.getWidth("x");
+        this.calculatedProperties.yWidth = this.getWidth("y");
+        this.calculatedProperties.zWidth = this.getWidth("z");
+
         // Initialize graphics
         this.startThree();
         this.endLoadingSequence()
@@ -54,7 +61,7 @@ export class IndexComponent {
         this.hdr = this.getHdr();
 
         // SETUP CONTROLS
-        this.controls = this.createControls();
+        this.createControls();
 
         // SETUP RENDERER
         this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -105,22 +112,28 @@ export class IndexComponent {
         return hdr;
     }
 
-    createControls(): OrbitControls {
-        const controls = new OrbitControls(this.camera, this.renderer.domElement);
-        const yPos = this.getWidth("y");
-        this.camera.position.set(0, yPos, 4);
+    createControls() {
+        this.controls = new OrbitControls(this.camera, this.renderer.domElement);;
 
-        const zDepth = this.getWidth("z");
-        controls.target = new THREE.Vector3(0, yPos, -zDepth);
-        controls.addEventListener('change', this.render.bind(this));
+        this.camera.position.set(0, Config.CAMERA_Y_DEFAULT, Config.CAMERA_Z_DEFAULT);
 
-        controls.update();
-
-        return controls;
+        this.controls.target = new THREE.Vector3(0, Config.CAMERA_Y_DEFAULT, -this.calculatedProperties.zWidth);
+        this.controls.addEventListener('change', this.onOrbitChange.bind(this));
+        this.controls.update();
     }
 
     render() {
         this.renderer.render(this.scene, this.camera)
+    }
+
+    onOrbitChange() {
+
+        // The target on the x or z axis should never change
+        this.controls.target = new THREE.Vector3(0, this.camera.position.y, -this.calculatedProperties.zWidth);
+
+
+        // The target on the y axis should change to match camera
+        this.render();
     }
 
     getWidth(dimension: "x" | "y" | "z"): number {
@@ -129,9 +142,9 @@ export class IndexComponent {
             case "x":
                 return (numLetters * dimensions) + ((numLetters - 1) * offset)
             case "y":
-                return (numLetters * dimensions) + ((numTries - 1) * offset);
+                return (numTries * dimensions) + ((numTries - 1) * offset);
             case "z":
-                return this.getWidth("y");
+                return this.getWidth("x");
         }
     }
 
@@ -154,8 +167,9 @@ export class IndexComponent {
     createCubes() {
         const { numLetters, numTries, dimensions, offset, roundness, roundSegments } = { numLetters: Config.NUM_LETTERS, numTries: Config.NUM_TRIES, dimensions: Config.CUBE_SIZE, offset: Config.CUBE_OFFSET, roundness: Config.CUBE_ROUNDNESS, roundSegments: Config.CUBE_ROUND_SEGMENTS }
         const geometry = new RoundedBoxGeometry(dimensions, dimensions, dimensions, roundSegments, roundness);
-        const calculatedWidth = this.getWidth("x");
-        const calculatedHeight = this.getWidth("y");
+        const calculatedWidth = this.calculatedProperties.xWidth;
+        const calculatedHeight = this.calculatedProperties.yWidth;
+        const calculatedZDepth = this.calculatedProperties.zWidth;
 
         // Render each of the cubes
         // Render in order of try so we can store each cube reference by corresponding try
@@ -174,11 +188,16 @@ export class IndexComponent {
                         }
                     }
                     const cube = new Mesh(geometry, this.cubeMaterial);
-                    cube.position.setX(letterIndex * (dimensions + offset) - (calculatedWidth / 2));
-                    cube.position.setY(((numTries - tryIndex - 1) * (dimensions + offset)) - (calculatedHeight / 2));
-                    cube.position.setZ((-zIndex * (dimensions + offset)) - 5);
-                    this.scene.add(cube);
+                    const spacing = dimensions + offset;
+                    const positionX = (letterIndex * spacing) + (dimensions / 2);
+                    const positionY = ((numTries - tryIndex - 1) * spacing) + (dimensions / 2);
+                    const positionZ = (-zIndex * spacing) - (dimensions / 2);
 
+                    cube.position.setX(positionX - (calculatedWidth / 2));
+                    cube.position.setY(positionY - (calculatedHeight / 2));
+                    cube.position.setZ(positionZ - (calculatedZDepth / 2));
+
+                    this.scene.add(cube);
                     tryCubeArray.push([cube, letterIndex, zIndex]);
                 }
             }

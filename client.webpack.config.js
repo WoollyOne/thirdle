@@ -30,7 +30,6 @@ module.exports = {
             patterns: [
                 { from: 'src/html/index.html', to: 'public/index.html' },
                 { from: 'src/html/index.css', to: 'public/index.css' },
-                { from: 'src/hdr/*.hdr', to: './public/hdr/[name].hdr' },
                 { from: 'src/fonts/*.json', to: './public/fonts/[name].json' },
                 // { from: 'src/wav/*.wav', to: './public/sound/[name].wav' },
             ]

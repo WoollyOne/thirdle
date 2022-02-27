@@ -1,4 +1,4 @@
-import { Config } from "./config";
+import { Config } from "../exportable/config";
 
 export class KeyboardComponent {
     constructor() {

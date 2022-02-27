@@ -1,5 +1,5 @@
-import { Config } from "./config";
-import { IndexComponent } from "./index";
+import { Config } from "../exportable/config";
+import { IndexComponent } from "../index";
 
 export class GameHandler {
     public currentTry: number = 0;

@@ -1,12 +1,18 @@
-import { Config } from "./config";
+import { Config } from "../exportable/config";
+import { IndexComponent } from "../index";
+import { getSwipeDirection } from "../model/swipedirection";
+import { Renderer } from "../render/renderer";
 import { GameHandler } from "./game";
-import { IndexComponent } from "./index";
 
 export class InputHandler {
-    constructor(public indexComponent: IndexComponent, public gameHandler: GameHandler) {
+    constructor(public indexComponent: IndexComponent, public gameHandler: GameHandler, public renderer: Renderer) {
         document.querySelectorAll(".keyboard-key").forEach((element) => element.addEventListener("click", this.handleClickKey.bind(this)));
         document.addEventListener("keydown", this.handleKeyDown.bind(this), true);
+        document.addEventListener("pointerdown", this.handlePointerDown.bind(this), true);
+        document.addEventListener("pointerup", this.handlePointerUp.bind(this), true);
     }
+
+    public dragLocation: [number, number] | null;
 
     handleKeyDown(event: KeyboardEvent) {
         if (event.defaultPrevented) {
@@ -26,7 +32,7 @@ export class InputHandler {
     handleClickKey(event: Event) {
         // this.soundPlayer.playSound('click');
 
-        if (event.defaultPrevented || !this.gameHandler.active) {
+        if (event.defaultPrevented || !this.gameHandler.active || this.renderer.currentAnimations.size !== 0) {
             return;
         }
 
@@ -58,7 +64,7 @@ export class InputHandler {
                 return;
             }
 
-            this.indexComponent.renderTextForCubes(undefined, this.gameHandler.currentTry, guessBuffer[0].length - 1);
+            this.renderer.renderTextForCubes(undefined, this.gameHandler.currentTry, guessBuffer[0].length - 1);
 
             for (const words of this.gameHandler.guessBuffer) {
                 words.pop();
@@ -71,10 +77,42 @@ export class InputHandler {
             return;
         }
 
-        this.indexComponent.renderTextForCubes(keyValue, this.gameHandler.currentTry, guessBuffer[0].length);
+        this.renderer.renderTextForCubes(keyValue, this.gameHandler.currentTry, guessBuffer[0].length);
 
         for (const words of this.gameHandler.guessBuffer) {
             words.push(keyValue);
         }
+    }
+
+    handlePointerDown(event: MouseEvent) {
+        if (event.defaultPrevented) {
+            return;
+        }
+
+        // Don't allow multiple taps/clicks
+        if (this.dragLocation) {
+            return;
+        }
+
+        event.preventDefault();
+        this.dragLocation = [event.clientX, event.clientY];
+    }
+
+    handlePointerUp(event: MouseEvent) {
+        if (event.defaultPrevented) {
+            return;
+        }
+
+        // We need to have a click down first
+        if (!this.dragLocation) {
+            return;
+        }
+
+        const delta: [number, number] = [event.clientX - this.dragLocation[0], event.clientY - this.dragLocation[1]];
+
+        const swipeDirection = getSwipeDirection(delta);
+        this.renderer.rotateView(swipeDirection);
+
+        this.dragLocation = null;
     }
 }

@@ -1,5 +1,6 @@
 :root {
-  --keyboard-key: #222222;
+  --keyboard-bg: #001c24;
+  --keyboard-key: #036079;
   --keyboard-text: #eeeeee;
 }
 
@@ -27,6 +28,9 @@ body {
 #keyboard {
   -ms-touch-action: manipulation;
   touch-action: manipulation;
+  background-color: var(--keyboard-bg);
+  padding: 4px;
+  border-radius: 4px;
 }
 
 #keyboard .keyboard-row {

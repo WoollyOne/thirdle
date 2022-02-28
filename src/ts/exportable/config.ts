@@ -28,7 +28,7 @@ export const Config = {
 
     // CAMERA
     CAMERA_Y_DEFAULT: 4,
-    CAMERA_Z_DEFAULT: 8,
+    CAMERA_Z_DEFAULT: 10,
 
     // TEXT
     TEXT_FLOAT_DISTANCE: 0.5,
@@ -37,6 +37,8 @@ export const Config = {
     // GESTURES
     SWIPE_DELTA_THRESHOLD: 100,
     SWIPE_SPEED: 250,
+    SWIPE_VERTICAL_DISTANCE: 2.5,
+    SWIPE_NUDGE_DISTANCE: 1,
 
     // KEYBOARD
     KEYBOARD_LAYOUT: [

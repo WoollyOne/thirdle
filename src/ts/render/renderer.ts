@@ -1,17 +1,17 @@
 import * as TWEEN from "@tweenjs/tween.js";
 import * as THREE from "three";
-import { BoxGeometry, Color, Light, Mesh, MeshBasicMaterial, MeshPhongMaterial, PerspectiveCamera, Scene, Texture, WebGLRenderer } from "three";
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { BoxGeometry, Color, Group, Light, Mesh, MeshBasicMaterial, MeshPhongMaterial, PerspectiveCamera, Scene, Texture, WebGLRenderer } from "three";
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry';
 import { Font, FontLoader } from "three/examples/jsm/loaders/FontLoader";
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader';
+import { radToDeg } from "three/src/math/MathUtils";
 import { IndexComponent } from "..";
 import { Config } from "../exportable/config";
-import { normalizeInBounds } from "../exportable/util";
+import { getWidth, normalizeInBounds } from "../exportable/util";
 import { CubeFace, getAsOffset, getAsRotation } from "../model/cubeface/cubeface";
 import { FaceReference } from "../model/cubeface/facereference";
-import { SwipeDirection } from "../model/swipedirection";
+import { getSwipeDirection, SwipeDirection } from "../model/swipedirection";
 import { ThirdleAnimation } from "./thirdleanimation";
 
 export class Renderer {
@@ -19,26 +19,26 @@ export class Renderer {
     public scene: Scene;
     public camera: PerspectiveCamera;
     public renderer: WebGLRenderer;
-    public controls: OrbitControls;
     public light: Light;
     public hdr: Texture;
 
     public cubeMeshes: Mesh[] = [];
+    public towerGroup: Group;
     public cubes: FaceReference[][] = [];
     public cubeMaterials: Map<string, MeshPhongMaterial> = new Map();
     public textGeometries: Map<string, TextGeometry> = new Map();
 
     public readonly calculatedProperties = this.indexComponent.calculatedProperties;
     public currentAnimations = new Set<ThirdleAnimation>();
+    public currentTowerRotation: number = 0;
 
     constructor(public indexComponent: IndexComponent) {
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.camera.position.set(0, Config.CAMERA_Y_DEFAULT, Config.CAMERA_Z_DEFAULT);
+
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.light = new THREE.DirectionalLight(0xffffff, 0.5);
-
-        // SETUP CONTROLS
-        this.createControls();
 
         // SETUP RENDERER
         this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -117,26 +117,8 @@ export class Renderer {
         return hdr;
     }
 
-    createControls() {
-        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-        this.controls.enabled = false;
-
-        this.camera.position.set(0, Config.CAMERA_Y_DEFAULT, Config.CAMERA_Z_DEFAULT);
-
-        this.controls.target = new THREE.Vector3(0, Config.CAMERA_Y_DEFAULT, 0);
-        // this.controls.minDistance = Config.CAMERA_Z_DEFAULT + this.calculatedProperties.zWidth;
-        this.controls.addEventListener('change', this.onOrbitChange.bind(this));
-        this.controls.update();
-    }
-
     render() {
         this.renderer.render(this.scene, this.camera)
-    }
-
-    onOrbitChange() {
-        // The target on the x or z axis should never change
-        this.controls.target.set(0, this.camera.position.y, 0);
-        this.render();
     }
 
     createTextGeometries(font: Font) {
@@ -156,12 +138,13 @@ export class Renderer {
     }
 
     createCubes() {
+        this.towerGroup = new Group();
+
         const { numLetters, numTries, dimensions, offset, roundness, roundSegments } = { numLetters: Config.NUM_LETTERS, numTries: Config.NUM_TRIES, dimensions: Config.CUBE_SIZE, offset: Config.CUBE_OFFSET, roundness: Config.CUBE_ROUNDNESS, roundSegments: Config.CUBE_ROUND_SEGMENTS }
         const geometry = new RoundedBoxGeometry(dimensions, dimensions, dimensions, roundSegments, roundness);
         const calculatedWidth = this.calculatedProperties.xWidth;
         const calculatedHeight = this.calculatedProperties.yWidth;
         const calculatedZDepth = this.calculatedProperties.zWidth;
-        console.log("HWZ:", calculatedWidth, calculatedHeight, calculatedZDepth);
 
         // Render each of the cubes
         // Render in order of try so we can store each cube reference by corresponding try
@@ -189,7 +172,7 @@ export class Renderer {
                     cube.position.setZ(positionZ + (calculatedZDepth / 2));
                     cube.scale.set(0, 0, 0);
 
-                    this.scene.add(cube);
+                    this.towerGroup.add(cube);
                     this.cubeMeshes.push(cube);
                     tryCubeArray.push([cube, letterIndex, zIndex]);
                 }
@@ -200,6 +183,8 @@ export class Renderer {
             }
             this.cubes.push(tryFaceReferenceArray);
         }
+
+        this.scene.add(this.towerGroup);
     }
 
     renderTextForCubes(text: string | undefined, currentTry: number, letterIndex: number) {
@@ -268,7 +253,7 @@ export class Renderer {
                     textMesh.position.x += depth / 2;
                     break;
             }
-            this.scene.add(textMesh);
+            this.towerGroup.add(textMesh);
             faceReference.renderedLetter = textMesh;
         }
     }
@@ -382,9 +367,8 @@ export class Renderer {
             const normalizedY = normalizeInBounds(value.y, lowestY, Config.CAMERA_Y_DEFAULT);
             // console.log(normalizedY);
             this.camera.position.setY(value.y)
-            this.camera.position.setX(Math.sin(normalizedY * (2 * Math.PI)) * Config.CAMERA_Z_DEFAULT);
-            this.camera.position.setZ(Math.cos(normalizedY * (2 * Math.PI)) * Config.CAMERA_Z_DEFAULT);
-            // console.log(Math.round(100 * Math.sin(normalizedY * (2 * Math.PI)) * Config.CAMERA_Z_DEFAULT) / 100);
+            const twoPi = Math.PI;
+            this.towerGroup.rotation.y = (normalizedY * twoPi) - twoPi;
         };
         // Animate the camera from the bottom
         new TWEEN.Tween({ y: lowestY })
@@ -415,48 +399,100 @@ export class Renderer {
         animateInNext(0);
     }
 
-    public rotateView(direction: SwipeDirection) {
-        if (!(direction === SwipeDirection.Left || direction === SwipeDirection.Right)) {
+    public dragMoveView(delta: [number, number]) {
+        if (!(getSwipeDirection(delta) === SwipeDirection.Left || getSwipeDirection(delta) === SwipeDirection.Right)) {
             return;
         }
 
-        const currentRotation = Math.acos(this.camera.position.x / Config.CAMERA_Z_DEFAULT);
-        let rotateAmount = Math.PI / 2;
+        const deltaX = delta[0];
 
-        if (direction === SwipeDirection.Right) {
-            rotateAmount *= -1;
-        }
+        const peekAmount = (deltaX / Config.SWIPE_DELTA_THRESHOLD) * (Math.PI / 4);
+        this.towerGroup.rotation.y = this.currentTowerRotation + peekAmount;
+    }
 
-        let nextRotation = currentRotation + rotateAmount;
-
-        // if (nextRotation >= 2 * Math.PI) {
-        //     nextRotation = rotateAmount;
-        // } else if (nextRotation < 0) {
-        //     nextRotation = 1.5 * Math.PI;
-        // }
-
-        const cameraUpdateFunction = (value: { x: number }) => {
-            this.camera.position.setX(Math.sin(value.x) * Config.CAMERA_Z_DEFAULT);
-            this.camera.position.setZ(Math.cos(value.x) * Config.CAMERA_Z_DEFAULT);
-        };
-
-        this.currentAnimations.add(ThirdleAnimation.SWIPE_ROTATION);
-
-        new TWEEN.Tween({ x: currentRotation })
-            .to({ x: nextRotation }, Config.SWIPE_SPEED)
-            .easing(TWEEN.Easing.Cubic.InOut)
-            .onUpdate(cameraUpdateFunction)
-            .onComplete(() => this.currentAnimations.delete(ThirdleAnimation.SWIPE_ROTATION))
+    public dragMoveViewDrop() {
+        const currentActualRotation = this.towerGroup.rotation.y;
+        new TWEEN.Tween({ x: currentActualRotation })
+            .to({ x: this.currentTowerRotation }, Config.SWIPE_SPEED)
+            .easing(TWEEN.Easing.Cubic.Out)
+            .onUpdate((value: { x: number }) => this.towerGroup.rotation.y = value.x)
+            .onComplete(() => this.currentAnimations.delete(ThirdleAnimation.SWIPE))
             .start();
+    }
+
+    public swipeMoveView(direction: SwipeDirection) {
+        if (direction === SwipeDirection.Left || direction === SwipeDirection.Right) {
+
+            const currentSnappedRotation = this.currentTowerRotation;
+            let rotateAmount = Math.PI / 2;
+
+            if (direction === SwipeDirection.Left) {
+                rotateAmount *= -1;
+            }
+
+            const lastRotation = this.towerGroup.rotation.y;
+            let nextRotation = currentSnappedRotation + rotateAmount;
+
+            this.currentAnimations.add(ThirdleAnimation.SWIPE);
+
+            this.currentTowerRotation = nextRotation;
+
+            new TWEEN.Tween({ x: lastRotation })
+                .to({ x: nextRotation }, Config.SWIPE_SPEED)
+                .easing(TWEEN.Easing.Cubic.Out)
+                .onUpdate((value: { x: number }) => this.towerGroup.rotation.y = value.x)
+                .onComplete(() => {
+                    this.currentAnimations.delete(ThirdleAnimation.SWIPE);
+                    console.log("Went from", radToDeg(lastRotation), "to", radToDeg(nextRotation));
+                })
+                .start();
+        } else if (direction !== SwipeDirection.None) {
+            const swipeDistance = Config.SWIPE_VERTICAL_DISTANCE;
+            const currentY = this.camera.position.y;
+
+            const maxYDisplacement = getWidth("y") / 2;
+
+            let nextY;
+
+            if (direction == SwipeDirection.Down) {
+                nextY = Math.min(maxYDisplacement, currentY + swipeDistance);
+            } else {
+                nextY = Math.max(-maxYDisplacement, currentY - swipeDistance);
+            }
+
+            const cameraUpdateFunction = (value: { y: number }) => {
+                this.camera.position.setY(value.y);
+            };
+
+            if (nextY !== currentY) {
+                new TWEEN.Tween({ y: currentY })
+                    .to({ y: nextY }, Config.SWIPE_SPEED)
+                    .easing(TWEEN.Easing.Cubic.Out)
+                    .onUpdate(cameraUpdateFunction)
+                    .onComplete(() => this.currentAnimations.delete(ThirdleAnimation.SWIPE))
+                    .start();
+            } else {
+                const reverseFactor = currentY / Math.abs(currentY);
+                new TWEEN.Tween({ y: currentY })
+                    .to({ y: currentY + (reverseFactor * Config.SWIPE_NUDGE_DISTANCE) }, Config.SWIPE_SPEED / 2)
+                    .to({ y: currentY }, Config.SWIPE_SPEED / 2)
+                    .easing(TWEEN.Easing.Quadratic.InOut)
+                    .onUpdate(cameraUpdateFunction)
+                    .onComplete(() => this.currentAnimations.delete(ThirdleAnimation.SWIPE))
+                    .start();
+            }
+        }
     }
 
     animate(time: number) {
         requestAnimationFrame(this.animate.bind(this));
         TWEEN.update(time);
 
-        this.controls.update();
         this.light.position.set(this.camera.position.x, this.camera.position.y, this.camera.position.z);
         this.render();
+        document.getElementById("rotation").innerText = (radToDeg(this.currentTowerRotation)).toString();
+        document.getElementById("rotation2").innerText =
+            radToDeg(this.towerGroup.rotation.y).toString();
     }
 
     endLoadingSequence() {

@@ -33,3 +33,12 @@ export function getWidth(dimension: "x" | "y" | "z"): number {
 export function normalizeInBounds(value: number, min: number, max: number): number {
     return (value - min) / (max - min);
 }
+
+export function getRotationFromPoint(x: number, y: number): number {
+    let angle = Math.asin(x / Config.CAMERA_Z_DEFAULT);
+    if (Math.acos(y / Config.CAMERA_Z_DEFAULT) <= 0) {
+        angle = (2 * Math.PI) - angle;
+    }
+
+    return angle;
+}

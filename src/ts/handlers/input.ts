@@ -1,6 +1,6 @@
 import { Config } from "../exportable/config";
 import { IndexComponent } from "../index";
-import { getSwipeDirection } from "../model/swipedirection";
+import { getSwipeDirection, SwipeDirection } from "../model/swipedirection";
 import { Renderer } from "../render/renderer";
 import { GameHandler } from "./game";
 
@@ -10,6 +10,7 @@ export class InputHandler {
         document.addEventListener("keydown", this.handleKeyDown.bind(this), true);
         document.addEventListener("pointerdown", this.handlePointerDown.bind(this), true);
         document.addEventListener("pointerup", this.handlePointerUp.bind(this), true);
+        document.addEventListener("pointermove", this.handlePointerMove.bind(this), true);
     }
 
     public dragLocation: [number, number] | null;
@@ -84,6 +85,24 @@ export class InputHandler {
         }
     }
 
+    handlePointerMove(event: MouseEvent) {
+        if (!this.dragLocation) {
+            return;
+        }
+
+        const delta: [number, number] = [event.clientX - this.dragLocation[0], event.clientY - this.dragLocation[1]];
+        const swipeDirection = getSwipeDirection(delta, Config.SWIPE_DELTA_THRESHOLD);
+
+        // Don't keep dragging if we are past the threshold
+        if (swipeDirection !== SwipeDirection.None) {
+            this.handlePointerUp(event);
+            return;
+        }
+
+        this.renderer.dragMoveView(delta);
+        event.preventDefault();
+    }
+
     handlePointerDown(event: MouseEvent) {
         if (event.defaultPrevented) {
             return;
@@ -110,8 +129,18 @@ export class InputHandler {
 
         const delta: [number, number] = [event.clientX - this.dragLocation[0], event.clientY - this.dragLocation[1]];
 
-        const swipeDirection = getSwipeDirection(delta);
-        this.renderer.rotateView(swipeDirection);
+        const swipeDirection = getSwipeDirection(delta, Config.SWIPE_DELTA_THRESHOLD);
+
+        // If there is no valid swipe, we have been dragging so we should drop.
+        if (swipeDirection == SwipeDirection.None) {
+            this.renderer.dragMoveViewDrop()
+        } else {
+            //  If the swipe is up, then we need to also move the camera back into the correct position
+            if (swipeDirection === SwipeDirection.Up || swipeDirection === SwipeDirection.Down) {
+                this.renderer.dragMoveViewDrop();
+            }
+            this.renderer.swipeMoveView(swipeDirection);
+        }
 
         this.dragLocation = null;
     }

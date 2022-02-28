@@ -1,4 +1,3 @@
-import { Config } from "../exportable/config";
 
 export enum SwipeDirection {
     Left = "left",
@@ -8,12 +7,14 @@ export enum SwipeDirection {
     None = "none", // For when a swipe is too small
 }
 
-export function getSwipeDirection(delta: [number, number]): SwipeDirection {
+export function getSwipeDirection(delta: [number, number], threshold?: number): SwipeDirection {
     const xDelta = delta[0];
     const yDelta = delta[1];
 
-    if (Math.max(Math.abs(xDelta), Math.abs(yDelta)) < Config.SWIPE_DELTA_THRESHOLD) {
-        return SwipeDirection.None;
+    if (threshold) {
+        if (Math.max(Math.abs(xDelta), Math.abs(yDelta)) < threshold) {
+            return SwipeDirection.None;
+        }
     }
 
     if (Math.abs(xDelta) > Math.abs(yDelta)) {

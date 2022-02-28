@@ -23,9 +23,6 @@ if (!process.env.TEST) {
     });
     app.listen(port, async () => {
         console.log(`Thirdle is running on port ${port}!`);
-        if (process.env.NODE_ENV && process.env.NODE_ENV === "development") {
-            openJs(`${host}/thirdle`); // opens `web/index.html` page
-        }
     });
 } else {
     new TestRunner().runTests();

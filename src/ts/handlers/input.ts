@@ -50,7 +50,7 @@ export class InputHandler {
         }
 
         if (keyValue === "ENTER") {
-            // this.handleClickGuess(event);
+            this.gameHandler.guess();
             return;
         }
 
@@ -61,6 +61,7 @@ export class InputHandler {
         const guessBuffer = this.gameHandler.guessBuffer;
 
         if (keyValue === "BACKSPACE") {
+            console.log("back")
             if (guessBuffer[0].length === 0) {
                 return;
             }

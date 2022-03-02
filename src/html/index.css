@@ -4,7 +4,9 @@
   --keyboard-text: #eeeeee;
 }
 
-body {
+html, body {
+  position: fixed;
+  overflow: hidden;
   margin: 0;
 }
 

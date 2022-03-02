@@ -42,3 +42,47 @@ export function getRotationFromPoint(x: number, y: number): number {
 
     return angle;
 }
+
+export function convertIndexWithSequentialOrdering(index: number) {
+    const normalized = index % (4 * (Config.NUM_LETTERS - 1))
+
+    // S side (0,1,2,3,4)
+    if (normalized >= 0 && normalized < Config.NUM_LETTERS) {
+        // 0
+        // 1
+        // 2
+        // 3
+        // 4
+        return index;
+    }
+
+    // E side (6,8,10)
+    if (normalized >= Config.NUM_LETTERS && normalized < (Config.NUM_LETTERS * 2) - 2) {
+        // 5 -> 6
+        // 6 -> 8
+        // 7 -> 10
+
+        return (2 * normalized) - (Config.NUM_LETTERS - 1);
+    }
+
+    // N side (15, 14, 13, 12, 11)
+    if (normalized >= (Config.NUM_LETTERS * 2) - 2 && normalized < (Config.NUM_LETTERS * 3) - 2) {
+        // 8 -> 15
+        // 9 -> 14
+        // 10 -> 13
+        // 11 -> 12
+        // 12 -> 11
+        return ((4 * Config.NUM_LETTERS) - normalized) + 3;
+    }
+
+    // W side (9, 7, 5)
+    if (normalized >= (Config.NUM_LETTERS * 3) - 2) {
+        // 13 -> 9
+        // 14 -> 7
+        // 15 -> 5
+        const decrementedNormalized = (7 * (Config.NUM_LETTERS)) - (2 * normalized);
+        // 16 - 8 = 8, 16 - 14 = 2, 
+
+        return decrementedNormalized;
+    }
+}

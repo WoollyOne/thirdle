@@ -1,16 +1,17 @@
 import * as TWEEN from "@tweenjs/tween.js";
 import * as THREE from "three";
-import { BoxGeometry, Color, Group, Light, Mesh, MeshBasicMaterial, MeshPhongMaterial, PerspectiveCamera, Scene, Texture, WebGLRenderer } from "three";
+import { BoxGeometry, Group, Light, Mesh, MeshBasicMaterial, MeshPhongMaterial, PerspectiveCamera, Scene, Texture, WebGLRenderer } from "three";
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry';
 import { Font, FontLoader } from "three/examples/jsm/loaders/FontLoader";
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader';
-import { radToDeg } from "three/src/math/MathUtils";
 import { IndexComponent } from "..";
 import { Config } from "../exportable/config";
-import { getWidth, normalizeInBounds } from "../exportable/util";
+import { convertIndexWithSequentialOrdering, getWidth, normalizeInBounds } from "../exportable/util";
 import { CubeFace, getAsOffset, getAsRotation } from "../model/cubeface/cubeface";
+import { CubeUpdateData } from "../model/cubeface/cubeupdatedata";
 import { FaceReference } from "../model/cubeface/facereference";
+import { LetterResultType } from "../model/guessresults";
 import { getSwipeDirection, SwipeDirection } from "../model/swipedirection";
 import { ThirdleAnimation } from "./thirdleanimation";
 
@@ -91,11 +92,8 @@ export class Renderer {
     }
 
     createCubeMaterials() {
-
-        const materials: [string, Color][] = [["default", Config.CUBE_COLOR], ["close", Config.CUBE_CLOSE], ["match", Config.CUBE_MATCH], ["wrong", Config.CUBE_WRONG], ["mixed", Config.CUBE_MIXED]];
-
-        for (const [key, color] of materials) {
-            this.cubeMaterials.set(key, new THREE.MeshPhongMaterial({
+        for (const color of LetterResultType.values()) {
+            this.cubeMaterials.set(color, new THREE.MeshPhongMaterial({
                 color,
                 reflectivity: 0,
                 side: THREE.FrontSide,
@@ -161,7 +159,7 @@ export class Renderer {
                             continue;
                         }
                     }
-                    const cube = new Mesh(geometry, this.cubeMaterials.get("default"));
+                    const cube = new Mesh(geometry, this.cubeMaterials.get(LetterResultType.get("default_value")));
                     const spacing = dimensions + offset;
                     const positionX = (letterIndex * spacing) + (dimensions / 2);
                     const positionY = ((numTries - tryIndex - 1) * spacing) + (dimensions / 2);
@@ -207,7 +205,7 @@ export class Renderer {
                     throw new Error(`Attempted to unrender nonexistant letter (currentTry: ${currentTry}, letterIndex: ${letterIndex})`);
                 }
 
-                this.scene.remove(faceReference.renderedLetter);
+                this.towerGroup.remove(faceReference.renderedLetter);
                 faceReference.renderedLetter = undefined;
                 continue;
             }
@@ -320,13 +318,77 @@ export class Renderer {
         });
     }
 
-    animateChangeCubeColor(entries: { cube: Mesh, color: string }[]) {
+    public animateGuess(renderQueue: (CubeUpdateData | null)[], onFinish = () => { }) {
+        const animationEntries = [];
+        for (let renderObject of renderQueue) {
+            if (renderObject === null) {
+                animationEntries.push(null)
+            } else {
+                const index = convertIndexWithSequentialOrdering(renderObject.index);
+                const cube = this.cubeMeshes[index];
+                // console.log("Render from", renderObject.index + " => " + index);
+                animationEntries.push({ cube, color: renderObject.color });
+            }
+        }
+
+        // Recursively animate the colors for each side
+        this._animateGuessNext(
+            animationEntries,
+            0,
+            () => {
+                this.currentAnimations.delete(ThirdleAnimation.GUESS_ANIMATION);
+                onFinish();
+            });
+    }
+
+    // Called to render each face
+    private _animateGuessNext(
+        entries: { cube: Mesh | null, color: string }[],
+        startIndex: number,
+        onFinish: () => void
+    ) {
+        if (startIndex === 4) {
+            onFinish();
+            return;
+        }
+
+        const factor = Config.NUM_LETTERS - 1;
+        const offset = startIndex * factor;
+        //0 3, 4 7, 8 11, 12 15
+        const animationEntries = entries.slice(offset, offset + factor);
+        console.log("SI", startIndex, "Slice from", offset, "=> ", (offset + factor))
+
+        const targetRotation = (-2 * Math.PI) * startIndex / 4;
+
+        const onCubeChangeColorFinish = () => {
+            this.currentTowerRotation = targetRotation;
+            this._animateGuessNext(entries, startIndex + 1, onFinish);
+
+        };
+
+        // First rotate the camera to the correct spot
+        new TWEEN.Tween({ y: this.currentTowerRotation })
+            .to({ y: targetRotation }, 100).easing(TWEEN.Easing.Cubic.Out)
+            .onUpdate((value: { y: number }) => { this.towerGroup.rotation.y = value.y; })
+            .onComplete(() => {
+                // Animate the next batch of cubes (or skip), then call this function again
+                if (animationEntries[offset] !== null) {
+                    this.animateChangeCubeColor(animationEntries, onCubeChangeColorFinish);
+                } else {
+                    // Do finish function after short delay
+                    setTimeout(onCubeChangeColorFinish, 100);
+                }
+            }).start();
+    }
+
+    animateChangeCubeColor(entries: { cube: Mesh, color: string }[], onFinish: () => void) {
         this.currentAnimations.add(ThirdleAnimation.CUBE_COLOR_CHANGE);
 
         const cube = entries[0].cube;
         const color = entries[0].color;
         entries = entries.slice(1);
 
+        new TWEEN.Tween({ x: 0 })
         const letters = this.indexComponent.cubeReferenceMap.get(cube).map(face => face.letter).filter(letter => letter != null);
 
         const scaleUpdateFunction = (value: { x: number }) => {
@@ -354,7 +416,9 @@ export class Renderer {
             .onUpdate(rotateUpdateFunction).onComplete(() => {
                 this.currentAnimations.delete(ThirdleAnimation.CUBE_COLOR_CHANGE);
                 if (entries.length !== 0) {
-                    this.animateChangeCubeColor(entries);
+                    this.animateChangeCubeColor(entries, onFinish);
+                } else {
+                    onFinish();
                 }
             }).start();
     }
@@ -365,7 +429,6 @@ export class Renderer {
 
         const cameraUpdateFunction = (value: { y: number }) => {
             const normalizedY = normalizeInBounds(value.y, lowestY, Config.CAMERA_Y_DEFAULT);
-            // console.log(normalizedY);
             this.camera.position.setY(value.y)
             const twoPi = Math.PI;
             this.towerGroup.rotation.y = (normalizedY * twoPi) - twoPi;
@@ -443,7 +506,6 @@ export class Renderer {
                 .onUpdate((value: { x: number }) => this.towerGroup.rotation.y = value.x)
                 .onComplete(() => {
                     this.currentAnimations.delete(ThirdleAnimation.SWIPE);
-                    console.log("Went from", radToDeg(lastRotation), "to", radToDeg(nextRotation));
                 })
                 .start();
         } else if (direction !== SwipeDirection.None) {
@@ -490,9 +552,6 @@ export class Renderer {
 
         this.light.position.set(this.camera.position.x, this.camera.position.y, this.camera.position.z);
         this.render();
-        document.getElementById("rotation").innerText = (radToDeg(this.currentTowerRotation)).toString();
-        document.getElementById("rotation2").innerText =
-            radToDeg(this.towerGroup.rotation.y).toString();
     }
 
     endLoadingSequence() {

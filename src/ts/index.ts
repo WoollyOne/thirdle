@@ -29,7 +29,7 @@ export class IndexComponent {
         this.renderer = new Renderer(this);
 
         // Start game
-        this.gameHandler = new GameHandler(this);
+        this.gameHandler = new GameHandler(this, this.renderer);
 
         // Render keyboard
         new KeyboardComponent();

@@ -28,8 +28,6 @@ html, body {
 }
 
 #keyboard {
-  -ms-touch-action: manipulation;
-  touch-action: manipulation;
   background-color: var(--keyboard-bg);
   padding: 4px;
   border-radius: 4px;
@@ -43,6 +41,9 @@ html, body {
 }
 
 #keyboard .keyboard-key {
+  -ms-touch-action: manipulation;
+  touch-action: manipulation;
+  
   width: 76px;
   height: 118px;
   border-radius: 4px;

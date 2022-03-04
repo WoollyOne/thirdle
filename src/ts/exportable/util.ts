@@ -1,4 +1,5 @@
 import { Config } from "./config";
+import { Constants } from "./constants";
 
 export function incrementSetIfNotPresent(map: Map<string, number>, key: string) {
     if (map.has(key)) {
@@ -43,8 +44,10 @@ export function getRotationFromPoint(x: number, y: number): number {
     return angle;
 }
 
-export function convertIndexWithSequentialOrdering(index: number) {
+export function convertIndexWithSequentialOrdering(index: number, currentTry: number) {
+    const numberOfBlocks = Math.floor((Config.NUM_LETTERS - 1) * Constants.NUMBER_OF_WORDS);
     const normalized = index % (4 * (Config.NUM_LETTERS - 1))
+    let result;
 
     // S side (0,1,2,3,4)
     if (normalized >= 0 && normalized < Config.NUM_LETTERS) {
@@ -53,7 +56,7 @@ export function convertIndexWithSequentialOrdering(index: number) {
         // 2
         // 3
         // 4
-        return index;
+        result = normalized;
     }
 
     // E side (6,8,10)
@@ -62,7 +65,7 @@ export function convertIndexWithSequentialOrdering(index: number) {
         // 6 -> 8
         // 7 -> 10
 
-        return (2 * normalized) - (Config.NUM_LETTERS - 1);
+        result = (2 * normalized) - (Config.NUM_LETTERS - 1);
     }
 
     // N side (15, 14, 13, 12, 11)
@@ -72,7 +75,7 @@ export function convertIndexWithSequentialOrdering(index: number) {
         // 10 -> 13
         // 11 -> 12
         // 12 -> 11
-        return ((4 * Config.NUM_LETTERS) - normalized) + 3;
+        result = ((Constants.NUMBER_OF_WORDS * Config.NUM_LETTERS) - normalized) + 3;
     }
 
     // W side (9, 7, 5)
@@ -83,6 +86,17 @@ export function convertIndexWithSequentialOrdering(index: number) {
         const decrementedNormalized = (7 * (Config.NUM_LETTERS)) - (2 * normalized);
         // 16 - 8 = 8, 16 - 14 = 2, 
 
-        return decrementedNormalized;
+        result = decrementedNormalized;
     }
+
+    return result + (currentTry * numberOfBlocks);
+}
+
+export function getNormalizedRotation(rotation: number) {
+    let normalized = (rotation % (Math.PI * 2));
+    if (normalized < 0) {
+        normalized += Math.PI * 2;
+    }
+
+    return normalized;
 }

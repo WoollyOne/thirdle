@@ -6,5 +6,6 @@ export interface FaceReference {
     face: CubeFace,
     letter: number,
     try: number,
+    // side: number,
     renderedLetter?: Mesh
 }

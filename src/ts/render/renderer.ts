@@ -1,13 +1,14 @@
 import * as TWEEN from "@tweenjs/tween.js";
 import * as THREE from "three";
-import { BoxGeometry, Group, Light, Mesh, MeshBasicMaterial, MeshPhongMaterial, PerspectiveCamera, Scene, Texture, WebGLRenderer } from "three";
+import { BoxGeometry, Group, Light, Mesh, MeshBasicMaterial, MeshPhongMaterial, PerspectiveCamera, Scene, Texture, Vector3, WebGLRenderer } from "three";
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry';
 import { Font, FontLoader } from "three/examples/jsm/loaders/FontLoader";
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader';
 import { IndexComponent } from "..";
 import { Config } from "../exportable/config";
-import { convertIndexWithSequentialOrdering, getWidth, normalizeInBounds } from "../exportable/util";
+import { Constants } from "../exportable/constants";
+import { convertIndexWithSequentialOrdering, getNormalizedRotation, getWidth, normalizeInBounds } from "../exportable/util";
 import { CubeFace, getAsOffset, getAsRotation } from "../model/cubeface/cubeface";
 import { CubeUpdateData } from "../model/cubeface/cubeupdatedata";
 import { FaceReference } from "../model/cubeface/facereference";
@@ -190,9 +191,11 @@ export class Renderer {
             throw new Error("No text geometry found for " + text);
         }
 
+
         const textFloatDistance = Config.TEXT_FLOAT_DISTANCE;
         const simpleMaterial = new MeshBasicMaterial({ color: Config.TEXT_COLOR });
         const currentArray = this.cubes[currentTry];
+        this.updateCameraIfPointIsOutOfBounds(currentArray[0].cube.position);
 
         for (const faceReference of currentArray) {
             if (faceReference.letter !== letterIndex) {
@@ -253,6 +256,26 @@ export class Renderer {
             }
             this.towerGroup.add(textMesh);
             faceReference.renderedLetter = textMesh;
+        }
+    }
+
+    updateCameraIfPointIsOutOfBounds(point: Vector3) {
+        this.camera.updateMatrix();
+        this.camera.updateMatrixWorld();
+        var frustum = new THREE.Frustum();
+        frustum.setFromProjectionMatrix(
+            new THREE.Matrix4().multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse));
+
+        if (!frustum.containsPoint(point)) {
+            const correctPositionY = point.y - Config.CAMERA_CORRECTION_OFFSET;
+            new TWEEN.Tween({ y: this.camera.position.y })
+                .to({ y: correctPositionY },
+                    Config.CAMERA_CORRECTION_SPEED)
+                .easing(TWEEN.Easing.Cubic.Out)
+                .onUpdate((value: { y: number }) => {
+                    this.camera.position.y = value.y;
+                }).start();
+
         }
     }
 
@@ -319,14 +342,17 @@ export class Renderer {
     }
 
     public animateGuess(renderQueue: (CubeUpdateData | null)[], onFinish = () => { }) {
+        this.updateCameraIfPointIsOutOfBounds(this.cubes[this.indexComponent.gameHandler.currentTry][0].cube.position);
         const animationEntries = [];
         for (let renderObject of renderQueue) {
             if (renderObject === null) {
                 animationEntries.push(null)
             } else {
-                const index = convertIndexWithSequentialOrdering(renderObject.index);
+                const index = convertIndexWithSequentialOrdering(
+                    renderObject.index,
+                    this.indexComponent.gameHandler.currentTry
+                );
                 const cube = this.cubeMeshes[index];
-                // console.log("Render from", renderObject.index + " => " + index);
                 animationEntries.push({ cube, color: renderObject.color });
             }
         }
@@ -347,18 +373,29 @@ export class Renderer {
         startIndex: number,
         onFinish: () => void
     ) {
-        if (startIndex === 4) {
+        const targetRotation = (-2 * Math.PI) * startIndex / Constants.NUMBER_OF_WORDS;
+        let normalizedTowerRotation = getNormalizedRotation(this.currentTowerRotation);
+        const incorrectRotation = normalizedTowerRotation != targetRotation;
+        const cameraSpeed = Config.NUM_LETTERS * Config.CUBE_CHANGE_SPEED;
+
+        // First rotate the camera to the correct spot
+        new TWEEN.Tween({ x: this.currentTowerRotation })
+            .to({ x: targetRotation },
+                Config.NUM_LETTERS * Config.CUBE_CHANGE_SPEED)
+            .easing(TWEEN.Easing.Cubic.Out)
+            .onUpdate((value: { x: number }) => {
+                this.towerGroup.rotation.y = value.x;
+            }).start();
+
+        if (startIndex === Constants.NUMBER_OF_WORDS) {
             onFinish();
             return;
         }
 
         const factor = Config.NUM_LETTERS - 1;
         const offset = startIndex * factor;
-        //0 3, 4 7, 8 11, 12 15
         const animationEntries = entries.slice(offset, offset + factor);
-        console.log("SI", startIndex, "Slice from", offset, "=> ", (offset + factor))
 
-        const targetRotation = (-2 * Math.PI) * startIndex / 4;
 
         const onCubeChangeColorFinish = () => {
             this.currentTowerRotation = targetRotation;
@@ -366,19 +403,17 @@ export class Renderer {
 
         };
 
-        // First rotate the camera to the correct spot
-        new TWEEN.Tween({ y: this.currentTowerRotation })
-            .to({ y: targetRotation }, 100).easing(TWEEN.Easing.Cubic.Out)
-            .onUpdate((value: { y: number }) => { this.towerGroup.rotation.y = value.y; })
-            .onComplete(() => {
-                // Animate the next batch of cubes (or skip), then call this function again
-                if (animationEntries[offset] !== null) {
-                    this.animateChangeCubeColor(animationEntries, onCubeChangeColorFinish);
-                } else {
-                    // Do finish function after short delay
-                    setTimeout(onCubeChangeColorFinish, 100);
-                }
-            }).start();
+        let timeout = (startIndex === 0 && incorrectRotation) ? cameraSpeed : 0;
+
+        setTimeout(() => {
+            // Animate the next batch of cubes (or skip), then call this function again
+            if (animationEntries[offset] !== null) {
+                this.animateChangeCubeColor(animationEntries, onCubeChangeColorFinish);
+            } else {
+                // Do finish function after short delay
+                setTimeout(onCubeChangeColorFinish, 100);
+            }
+        }, timeout);
     }
 
     animateChangeCubeColor(entries: { cube: Mesh, color: string }[], onFinish: () => void) {
@@ -389,30 +424,19 @@ export class Renderer {
         entries = entries.slice(1);
 
         new TWEEN.Tween({ x: 0 })
-        const letters = this.indexComponent.cubeReferenceMap.get(cube).map(face => face.letter).filter(letter => letter != null);
-
-        const scaleUpdateFunction = (value: { x: number }) => {
-            cube.scale.set(value.x, value.x, value.x);
-            if (value.x === 0) {
-                cube.material = this.cubeMaterials.get(color);
-            }
-        }
+        const letters = this.indexComponent.cubeReferenceMap.get(cube).map(face => face.renderedLetter).filter(letter => letter != null);
 
         const newMaterial = this.cubeMaterials.get(color);
 
         const rotateUpdateFunction = (value: { x: number }) => {
-            cube.rotation.y = (Math.PI * 8) * value.x;
+            cube.rotation.y = (Math.PI * Config.CUBE_CHANGE_SPIN_FACTOR * 2) * value.x;
+            letters.forEach((letter) => letter.scale.set(value.x, value.x, value.x));
             if (value.x >= 0.5 && cube.material !== newMaterial) {
                 cube.material = newMaterial;
             }
         }
-
-        // new TWEEN.Tween({ x: 1 })
-        //     .to({ x: 0 }, 250).yoyo(true).repeat(1).easing(TWEEN.Easing.Cubic.InOut)
-        //     .onUpdate(scaleUpdateFunction).start();
-
         new TWEEN.Tween({ x: 0 })
-            .to({ x: 1 }, 500).easing(TWEEN.Easing.Cubic.Out)
+            .to({ x: 1 }, Config.CUBE_CHANGE_SPEED).easing(TWEEN.Easing.Cubic.Out)
             .onUpdate(rotateUpdateFunction).onComplete(() => {
                 this.currentAnimations.delete(ThirdleAnimation.CUBE_COLOR_CHANGE);
                 if (entries.length !== 0) {
@@ -474,6 +498,10 @@ export class Renderer {
     }
 
     public dragMoveViewDrop() {
+        if (this.currentAnimations.size !== 0) {
+            return;
+        }
+
         const currentActualRotation = this.towerGroup.rotation.y;
         new TWEEN.Tween({ x: currentActualRotation })
             .to({ x: this.currentTowerRotation }, Config.SWIPE_SPEED)
@@ -484,6 +512,10 @@ export class Renderer {
     }
 
     public swipeMoveView(direction: SwipeDirection) {
+        if (this.currentAnimations.size !== 0) {
+            return;
+        }
+
         if (direction === SwipeDirection.Left || direction === SwipeDirection.Right) {
 
             const currentSnappedRotation = this.currentTowerRotation;

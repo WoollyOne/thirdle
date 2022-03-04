@@ -1,4 +1,5 @@
 import { Config } from "../exportable/config";
+import { Constants } from "../exportable/constants";
 import { gameDict } from "../exportable/dicts/gamedict";
 import { validDict } from "../exportable/dicts/validdict";
 import { IndexComponent } from "../index";
@@ -15,9 +16,7 @@ export class GameHandler {
     public correctGuessIndices: Set<number> = new Set();
 
     constructor(public indexComponent: IndexComponent, public renderer: Renderer) {
-        for (let i = 0; i < 4; i++) {
-            this.guessBuffer.push([]);
-        }
+        this.resetGuessBuffer();
 
         // Generate the game words
         const gameWords: string[] = [];
@@ -42,7 +41,7 @@ export class GameHandler {
 
         const results: GuessResult[] = [];
 
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < Constants.NUMBER_OF_WORDS; i++) {
             const guess = this.guessBuffer[i];
             const evaluatedGuess = this.evaluateGuess(guess, this.words[i]);
 
@@ -54,8 +53,6 @@ export class GameHandler {
             results.push(evaluatedGuess);
         }
 
-        this.currentTry += 1;
-
         this.evaluateResults(results);
     }
 
@@ -64,15 +61,13 @@ export class GameHandler {
     }
 
     private evaluateResults(results: GuessResult[]) {
-        this.active = this.currentTry === Config.NUM_TRIES;
-
-        const lastTry = this.currentTry - 1;
+        this.active = this.currentTry < Config.NUM_TRIES;
 
         // Face x Cube Update Data. Goes up to the second to last index of the face, 
         // as each next face will handle that value
         const renderQueue: (CubeUpdateData | null)[] = [];
 
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < Constants.NUMBER_OF_WORDS; i++) {
             const indexOffset = i * (Config.NUM_LETTERS - 1);
 
             // Make sure player hasn't already won this word
@@ -80,7 +75,7 @@ export class GameHandler {
                 const result = results[i];
 
                 // Handle the first index first to check for an intersection
-                const prevIndex = i === 0 ? 4 - 1 : i - 1;
+                const prevIndex = i === 0 ? Constants.NUMBER_OF_WORDS - 1 : i - 1;
                 let isIntersection = this.doSidesIntersect(results[prevIndex], result);
 
                 // Handle the intersection case
@@ -88,7 +83,7 @@ export class GameHandler {
                     {
                         color: isIntersection ? result.resultList[0] : LetterResultType.get("mixed"),
                         index: indexOffset,
-                        try: lastTry
+                        try: this.currentTry
                     });
 
                 // We will go to the (n-1)th result because we handle the intersection case above
@@ -97,7 +92,7 @@ export class GameHandler {
                         {
                             color: result.resultList[letterIndex],
                             index: indexOffset + letterIndex,
-                            try: lastTry
+                            try: this.currentTry
                         });
                 }
 
@@ -107,8 +102,12 @@ export class GameHandler {
             }
         }
 
+        this.resetGuessBuffer();
+
         // Handle results animations
         this.renderer.animateGuess(renderQueue, () => {
+            this.currentTry += 1;
+
             if (!results.every((result) => result.resultType === GuessResultType.Win)) {
                 if (this.currentTry === Config.NUM_TRIES) {
                     this.handleEndGame("loss");
@@ -174,5 +173,13 @@ export class GameHandler {
 
     private getRandomWord() {
         return gameDict[Math.random() * gameDict.length | 0];
+    }
+
+    private resetGuessBuffer() {
+        this.guessBuffer = [];
+
+        for (let i = 0; i < Constants.NUMBER_OF_WORDS; i++) {
+            this.guessBuffer.push([]);
+        }
     }
 }

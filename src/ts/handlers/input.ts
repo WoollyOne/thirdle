@@ -94,6 +94,12 @@ export class InputHandler {
         const delta: [number, number] = [event.clientX - this.dragLocation[0], event.clientY - this.dragLocation[1]];
         const swipeDirection = getSwipeDirection(delta, Config.SWIPE_DELTA_THRESHOLD);
 
+
+        if (getSwipeDirection(delta, 10) === SwipeDirection.None) {
+            // Prevent slight movements
+            return;
+        }
+
         // Don't keep dragging if we are past the threshold
         if (swipeDirection !== SwipeDirection.None) {
             this.handlePointerUp(event);
